@@ -1,0 +1,24 @@
+/project-root
+│
+├── /src
+│   ├── /graphQL            # Папка для схем и резолверов
+│   │   └── schema.graphqls  # GraphQL схема
+│   │
+│   ├── /handlers           # HTTP-хендлеры (если используются)
+│   │   └── graphQLHandler.go
+│   │
+│   ├── /services           # Логика приложения, например, бизнес-логика
+│   │   └── service.go
+│   │
+│   ├── /models             # Определение структур и моделей данных
+│   │   └── models.go
+│   │
+│   ├── /repositories       # Работа с базой данных
+│   │   └── repository.go
+│   │
+│   └── main.go             # Точка входа в приложение
+│
+├── /config                 # Конфигурационные файлы проекта
+│   └── config.yaml
+│
+└── go.mod                  # Файл зависимостей Go
