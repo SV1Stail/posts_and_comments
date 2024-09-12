@@ -22,3 +22,7 @@
 │   └── config.yaml
 │
 └── go.mod                  # Файл зависимостей Go
+
+go clean -modcache
+go install github.com/99designs/gqlgen@latest
+export PATH=$PATH:$(go env GOPATH)/bin

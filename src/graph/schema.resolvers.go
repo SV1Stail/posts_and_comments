@@ -8,24 +8,132 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/SV1Stail/test_ozon/db"
 	"github.com/SV1Stail/test_ozon/graph/model"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v4"
 )
 
-// CreateTodo is the resolver for the createTodo field.
-func (r *mutationResolver) CreateTodo(ctx context.Context, input model.NewTodo) (*model.Todo, error) {
-	panic(fmt.Errorf("not implemented: CreateTodo - createTodo"))
+// создать пост
+func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, allowComments bool, authorId string) (*model.Post, error) {
+	pool := db.GetPool()
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Release()
+	postID := uuid.New().String()
+	_, err = conn.Exec(ctx, "INSERT INTO posts (id, title, content, allow_comments, user_id) VALUES ($1, $2, $3, $4, $5)",
+		postID, title, content, allowComments, authorId)
+	if err != nil {
+		return nil, err
+	}
+	post := &model.Post{
+		ID:            postID,
+		Title:         title,
+		Content:       content,
+		AllowComments: allowComments,
+		Author:        &model.User{ID: authorId},
+	}
+	return post, nil
 }
 
-// Todos is the resolver for the todos field.
-func (r *queryResolver) Todos(ctx context.Context) ([]*model.Todo, error) {
-	panic(fmt.Errorf("not implemented: Todos - todos"))
+// CreateComment is the resolver for the createComment field.
+// создать коммент
+func (r *mutationResolver) CreateComment(ctx context.Context, postId string, parentId *string, text string, authorId string) (*model.Comment, error) {
+	if len(text) > 2000 {
+		return nil, fmt.Errorf("comment text exceeds 2000 characters")
+	}
+	pool := db.GetPool()
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Release()
+	commentID := uuid.New().String()
+	_, err = conn.Exec(ctx,
+		"INSERT INTO comments (id, text, post_id, parent_id, user_id)VALUES ($1, $2, $3, $4, $5)",
+		commentID, text, postId, parentId, authorId)
+	if err != nil {
+		return nil, err
+	}
+	comment := &model.Comment{
+		ID:       commentID,
+		Text:     text,
+		PostID:   postId,
+		ParentID: parentId,
+		Children: []*model.Comment{},
+		Author:   &model.User{ID: authorId},
+	}
+	return comment, nil
 }
+
+// получить все посты
+// можно докинуть пагинацию и асинхронность
+func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
+	pool := db.GetPool()
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Release()
+
+	rows, err := conn.Query(ctx, "SELECT id, title, content, allow_comments, user_id FROM posts")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var posts []*model.Post
+
+	for rows.Next() {
+		var post model.Post
+		var user model.User
+		err := rows.Scan(&post.ID, &post.Title, &post.Content,
+			&post.AllowComments, &user.ID)
+		if err != nil {
+			return nil, err
+		}
+		post.Author = &user
+		posts = append(posts, &post)
+	}
+	return posts, nil
+}
+
+// пост по id
+func (r *queryResolver) Post(ctx context.Context, id string) (*model.Post, error) {
+	pool := db.GetPool()
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Release()
+	row := conn.QueryRow(ctx, "SELECT id, title, content, allow_comments, user_id FROM posts WHERE id=$1", id)
+
+	post := &model.Post{}
+	err = row.Scan(&post.ID, &post.Title, &post.Content,
+		&post.AllowComments, &post.Author.ID)
+	if err == pgx.ErrNoRows {
+		return nil, fmt.Errorf("post not found")
+	} else if err != nil {
+		return nil, err
+	}
+	return post, nil
+}
+
+// CommentAdded is the resolver for the commentAdded field.
+// func (r *subscriptionResolver) CommentAdded(ctx context.Context, postID string) (<-chan *model.Comment, error) {
+// 	panic(fmt.Errorf("not implemented: CommentAdded - commentAdded"))
+// }
 
 // Mutation returns MutationResolver implementation.
-func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
+// func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
-// Query returns QueryResolver implementation.
-func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
+// // Query returns QueryResolver implementation.
+// func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
-type mutationResolver struct{ *Resolver }
-type queryResolver struct{ *Resolver }
+// // Subscription returns SubscriptionResolver implementation.
+// func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
+
+// type mutationResolver struct{ *Resolver }
+// type queryResolver struct{ *Resolver }
+// type subscriptionResolver struct{ *Resolver }
