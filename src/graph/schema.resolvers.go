@@ -11,11 +11,11 @@ import (
 	"github.com/SV1Stail/test_ozon/db"
 	"github.com/SV1Stail/test_ozon/graph/model"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v4"
+	pgx "github.com/jackc/pgx/v4"
 )
 
-// создать пост
-func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, allowComments bool, authorId string) (*model.Post, error) {
+// CreatePost is the resolver for the createPost field.
+func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, allowComments bool, authorID string) (*model.Post, error) {
 	pool := db.GetPool()
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
@@ -24,23 +24,31 @@ func (r *mutationResolver) CreatePost(ctx context.Context, title string, content
 	defer conn.Release()
 	postID := uuid.New().String()
 	_, err = conn.Exec(ctx, "INSERT INTO posts (id, title, content, allow_comments, user_id) VALUES ($1, $2, $3, $4, $5)",
-		postID, title, content, allowComments, authorId)
+		postID, title, content, allowComments, authorID)
 	if err != nil {
 		return nil, err
+	}
+	if title == "" {
+		return nil, fmt.Errorf("title cannot be empty")
+	}
+	if content == "" {
+		return nil, fmt.Errorf("content cannot be empty")
+	}
+	if authorID == nil {
+
 	}
 	post := &model.Post{
 		ID:            postID,
 		Title:         title,
 		Content:       content,
 		AllowComments: allowComments,
-		Author:        &model.User{ID: authorId},
+		Author:        &model.User{ID: authorID},
 	}
 	return post, nil
 }
 
 // CreateComment is the resolver for the createComment field.
-// создать коммент
-func (r *mutationResolver) CreateComment(ctx context.Context, postId string, parentId *string, text string, authorId string) (*model.Comment, error) {
+func (r *mutationResolver) CreateComment(ctx context.Context, postID string, parentID *string, text string, authorID string) (*model.Comment, error) {
 	if len(text) > 2000 {
 		return nil, fmt.Errorf("comment text exceeds 2000 characters")
 	}
@@ -53,23 +61,23 @@ func (r *mutationResolver) CreateComment(ctx context.Context, postId string, par
 	commentID := uuid.New().String()
 	_, err = conn.Exec(ctx,
 		"INSERT INTO comments (id, text, post_id, parent_id, user_id)VALUES ($1, $2, $3, $4, $5)",
-		commentID, text, postId, parentId, authorId)
+		commentID, text, postID, parentID, authorID)
 	if err != nil {
 		return nil, err
 	}
 	comment := &model.Comment{
 		ID:       commentID,
 		Text:     text,
-		PostID:   postId,
-		ParentID: parentId,
+		PostID:   postID,
+		ParentID: parentID,
 		Children: []*model.Comment{},
-		Author:   &model.User{ID: authorId},
+		Author:   &model.User{ID: authorID},
 	}
+
 	return comment, nil
 }
 
-// получить все посты
-// можно докинуть пагинацию и асинхронность
+// Posts is the resolver for the posts field.
 func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
 	pool := db.GetPool()
 	conn, err := pool.Acquire(ctx)
@@ -94,12 +102,17 @@ func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
 			return nil, err
 		}
 		post.Author = &user
+
+		post.Comments, err = commentsForPost(pool, ctx, post.ID)
+		if err != nil {
+			return nil, err
+		}
 		posts = append(posts, &post)
 	}
 	return posts, nil
 }
 
-// пост по id
+// Post is the resolver for the post field.
 func (r *queryResolver) Post(ctx context.Context, id string) (*model.Post, error) {
 	pool := db.GetPool()
 	conn, err := pool.Acquire(ctx)
@@ -120,20 +133,59 @@ func (r *queryResolver) Post(ctx context.Context, id string) (*model.Post, error
 	return post, nil
 }
 
+// Comments is the resolver for the comments field.
+func (r *queryResolver) Comments(ctx context.Context, postID string) ([]*model.Comment, error) {
+	pool := db.GetPool()
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Release()
+
+	rows, err := conn.Query(ctx, "SELECT id, text, user_id, parent_id, post_id FROM comments WHERE post_id = $1", postID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var comments []*model.Comment
+	for rows.Next() {
+		var comment model.Comment
+		var author model.User
+		err := rows.Scan(&comment.ID, &comment.Text, &author.ID, &comment.ParentID, &comment.PostID)
+		if err != nil {
+			return nil, err
+		}
+		if comment.ParentID != nil {
+			continue
+		}
+		comment.Author = &author
+		comment.Children = make([]*model.Comment, 0)
+
+		err = commentsGetChildrenForComment(pool, ctx, comment.ID, &comment)
+		if err != nil {
+			return nil, err
+		}
+		comments = append(comments, &comment)
+	}
+
+	return comments, nil
+}
+
 // CommentAdded is the resolver for the commentAdded field.
-// func (r *subscriptionResolver) CommentAdded(ctx context.Context, postID string) (<-chan *model.Comment, error) {
-// 	panic(fmt.Errorf("not implemented: CommentAdded - commentAdded"))
-// }
+func (r *subscriptionResolver) CommentAdded(ctx context.Context, postID string) (<-chan *model.Comment, error) {
+	panic(fmt.Errorf("not implemented: CommentAdded - commentAdded"))
+}
 
 // Mutation returns MutationResolver implementation.
-// func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
+func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
-// // Query returns QueryResolver implementation.
-// func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
+// Query returns QueryResolver implementation.
+func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
-// // Subscription returns SubscriptionResolver implementation.
-// func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
+// Subscription returns SubscriptionResolver implementation.
+func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
 
-// type mutationResolver struct{ *Resolver }
-// type queryResolver struct{ *Resolver }
-// type subscriptionResolver struct{ *Resolver }
+type mutationResolver struct{ *Resolver }
+type queryResolver struct{ *Resolver }
+type subscriptionResolver struct{ *Resolver }

@@ -10,22 +10,3 @@ type Resolver struct {
 	posts    []*model.Post
 	comments []*model.Comment
 }
-
-func (r *Resolver) Mutation() MutationResolver {
-	return &mutationResolver{r}
-}
-
-func (r *Resolver) Query() QueryResolver {
-	return &queryResolver{r}
-}
-func (r *Resolver) Subscription() SubscriptionResolver {
-	return nil
-}
-
-// Optionally, if you implement subscriptions, you can add the Subscription resolver as well
-// func (r *Resolver) Subscription() SubscriptionResolver {
-// 	return &subscriptionResolver{r}
-// }
-
-type mutationResolver struct{ *Resolver }
-type queryResolver struct{ *Resolver }

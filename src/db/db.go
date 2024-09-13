@@ -10,8 +10,8 @@ import (
 
 var pool *pgxpool.Pool
 
-const DB_USER string = "postgres"
-const DB_PASSWORD string = "228p_b"
+const DB_USER string = "user_db"
+const DB_PASSWORD string = "1234"
 const DB_PORT string = "5432"
 const DB_NAME string = "ozon"
 
@@ -22,6 +22,7 @@ func Connect() {
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %v\n", err)
 	}
+
 }
 func ClosePool() {
 	pool.Close()
@@ -63,4 +64,3 @@ func GetTables() ([]string, error) {
 
 	return tables, nil
 }
-
