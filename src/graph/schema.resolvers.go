@@ -33,11 +33,6 @@ func (r *mutationResolver) CreatePost(ctx context.Context, title string, content
 	}
 	defer tx.Rollback(ctx)
 
-	// conn, err := pool.Acquire(ctx)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// defer conn.Release()
 	postID := uuid.New().String()
 	_, err = tx.Exec(ctx, "INSERT INTO posts (id, title, content, allow_comments, user_id) VALUES ($1, $2, $3, $4, $5)",
 		postID, title, content, allowComments, authorID)
@@ -75,11 +70,6 @@ func (r *mutationResolver) CreateComment(ctx context.Context, postID string, par
 		return nil, fmt.Errorf("authorID cannot be empty")
 	}
 	pool := db.GetPool()
-	// conn, err := pool.Acquire(ctx)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// defer conn.Release()
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
@@ -123,7 +113,13 @@ func (r *mutationResolver) CreateComment(ctx context.Context, postID string, par
 		Children: []*model.Comment{},
 		Author:   &model.User{ID: authorID},
 	}
-
+	r.mu.Lock()
+	if subs, ok := r.subscribers[postID]; ok {
+		for _, sub := range subs {
+			sub <- comment
+		}
+	}
+	r.mu.Unlock()
 	return comment, nil
 }
 
@@ -143,6 +139,7 @@ func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
 	}
 	defer rows.Close()
 	var posts []*model.Post
+	postMap := make(map[string]*model.Post)
 
 	for rows.Next() {
 		var post model.Post
@@ -150,19 +147,29 @@ func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
 		err := rows.Scan(&post.ID, &post.Title, &post.Content,
 			&post.AllowComments, &user.ID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan post: %w", err)
 		}
 		post.Author = &user
 
-		post.Comments, err = commentsForPost(pool, ctx, post.ID)
-		if err != nil {
-			return nil, err
-		}
+		post.Comments = []*model.Comment{}
+
 		posts = append(posts, &post)
+		postMap[post.ID] = &post
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("rows iteration error: %w", err)
 	}
+	comments, err := commentsForPosts(conn, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, comment := range comments {
+		if post, ok := postMap[comment.PostID]; ok {
+			post.Comments = append(post.Comments, comment)
+		}
+	}
+
 	return posts, nil
 }
 
@@ -174,16 +181,34 @@ func (r *queryResolver) Post(ctx context.Context, id string) (*model.Post, error
 		return nil, err
 	}
 	defer conn.Release()
+
+	var postExists bool
+	err = conn.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM posts WHERE id=$1)", id).Scan(&postExists)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if post exists: %w", err)
+	}
+	if !postExists {
+		return nil, fmt.Errorf("post with id %s does not exist", id)
+	}
+
 	row := conn.QueryRow(ctx, "SELECT id, title, content, allow_comments, user_id FROM posts WHERE id=$1", id)
 
 	post := &model.Post{}
+	author := &model.User{}
+	post.Author = author
 	err = row.Scan(&post.ID, &post.Title, &post.Content,
-		&post.AllowComments, &post.Author.ID)
+		&post.AllowComments, &author.ID)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("post not found")
 	} else if err != nil {
 		return nil, err
 	}
+	comments, err := commentsForPost(conn, ctx, post.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get comments: %w", err)
+	}
+	post.Comments = comments
+
 	return post, nil
 }
 
@@ -196,39 +221,29 @@ func (r *queryResolver) Comments(ctx context.Context, postID string) ([]*model.C
 	}
 	defer conn.Release()
 
-	rows, err := conn.Query(ctx, "SELECT id, text, user_id, parent_id, post_id FROM comments WHERE post_id = $1", postID)
+	comments, err := commentsGetChildrenForComment(conn, ctx, postID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get comments: %w", err)
 	}
-	defer rows.Close()
-
-	var comments []*model.Comment
-	for rows.Next() {
-		var comment model.Comment
-		var author model.User
-		err := rows.Scan(&comment.ID, &comment.Text, &author.ID, &comment.ParentID, &comment.PostID)
-		if err != nil {
-			return nil, err
-		}
-		if comment.ParentID != nil {
-			continue
-		}
-		comment.Author = &author
-		comment.Children = make([]*model.Comment, 0)
-
-		err = commentsGetChildrenForComment(pool, ctx, comment.ID, &comment)
-		if err != nil {
-			return nil, err
-		}
-		comments = append(comments, &comment)
-	}
-
 	return comments, nil
 }
 
 // CommentAdded is the resolver for the commentAdded field.
 func (r *subscriptionResolver) CommentAdded(ctx context.Context, postID string) (<-chan *model.Comment, error) {
-	panic(fmt.Errorf("not implemented: CommentAdded - commentAdded"))
+	commentChan := make(chan *model.Comment)
+	go func() {
+		<-ctx.Done()
+		close(commentChan)
+	}()
+
+	r.mu.Lock()
+	if r.subscribers[postID] == nil {
+		r.subscribers[postID] = make([]chan *model.Comment, 0)
+	}
+	r.subscribers[postID] = append(r.subscribers[postID], commentChan)
+	r.mu.Unlock()
+
+	return commentChan, nil
 }
 
 // Mutation returns MutationResolver implementation.
