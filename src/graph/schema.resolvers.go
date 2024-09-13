@@ -16,27 +16,40 @@ import (
 
 // CreatePost is the resolver for the createPost field.
 func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, allowComments bool, authorID string) (*model.Post, error) {
-	pool := db.GetPool()
-	conn, err := pool.Acquire(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Release()
-	postID := uuid.New().String()
-	_, err = conn.Exec(ctx, "INSERT INTO posts (id, title, content, allow_comments, user_id) VALUES ($1, $2, $3, $4, $5)",
-		postID, title, content, allowComments, authorID)
-	if err != nil {
-		return nil, err
-	}
 	if title == "" {
 		return nil, fmt.Errorf("title cannot be empty")
 	}
 	if content == "" {
 		return nil, fmt.Errorf("content cannot be empty")
 	}
-	if authorID == nil {
+	if authorID == "" {
+		return nil, fmt.Errorf("authorID cannot be empty")
+	}
+	pool := db.GetPool()
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// conn, err := pool.Acquire(ctx)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// defer conn.Release()
+	postID := uuid.New().String()
+	_, err = tx.Exec(ctx, "INSERT INTO posts (id, title, content, allow_comments, user_id) VALUES ($1, $2, $3, $4, $5)",
+		postID, title, content, allowComments, authorID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert post: %w", err)
 
 	}
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	post := &model.Post{
 		ID:            postID,
 		Title:         title,
@@ -52,18 +65,55 @@ func (r *mutationResolver) CreateComment(ctx context.Context, postID string, par
 	if len(text) > 2000 {
 		return nil, fmt.Errorf("comment text exceeds 2000 characters")
 	}
-	pool := db.GetPool()
-	conn, err := pool.Acquire(ctx)
-	if err != nil {
-		return nil, err
+	if postID == "" {
+		return nil, fmt.Errorf("postID cannot be empty")
 	}
-	defer conn.Release()
+	if text == "" {
+		return nil, fmt.Errorf("text cannot be empty")
+	}
+	if authorID == "" {
+		return nil, fmt.Errorf("authorID cannot be empty")
+	}
+	pool := db.GetPool()
+	// conn, err := pool.Acquire(ctx)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// defer conn.Release()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var postExists bool
+	err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM posts WHERE id=$1)", postID).Scan(&postExists)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if post exists: %w", err)
+	}
+	if !postExists {
+		return nil, fmt.Errorf("post with id %s does not exist", postID)
+	}
+	if parentID != nil {
+		var parentCommentExists bool
+		err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM comments WHERE id=$1)", parentID).Scan(&parentCommentExists)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check if parent comment exists: %w", err)
+		}
+		if !parentCommentExists {
+			return nil, fmt.Errorf("parent comment with id %s does not exist", postID)
+		}
+	}
 	commentID := uuid.New().String()
-	_, err = conn.Exec(ctx,
+	_, err = tx.Exec(ctx,
 		"INSERT INTO comments (id, text, post_id, parent_id, user_id)VALUES ($1, $2, $3, $4, $5)",
 		commentID, text, postID, parentID, authorID)
 	if err != nil {
 		return nil, err
+	}
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	comment := &model.Comment{
 		ID:       commentID,
@@ -88,7 +138,8 @@ func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
 
 	rows, err := conn.Query(ctx, "SELECT id, title, content, allow_comments, user_id FROM posts")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch posts: %w", err)
+
 	}
 	defer rows.Close()
 	var posts []*model.Post
@@ -108,6 +159,9 @@ func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
 			return nil, err
 		}
 		posts = append(posts, &post)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
 	}
 	return posts, nil
 }
