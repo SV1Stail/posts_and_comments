@@ -14,15 +14,15 @@ const DB_USER string = "user_db"
 const DB_PASSWORD string = "1234"
 const DB_PORT string = "5432"
 const DB_NAME string = "ozon"
+const DB_HOST string = "db"
 
 func Connect() {
-	// str := fmt.Sprintf("postgres://%s:%s@localhost:%s/%s", DB_USER, DB_PASSWORD, DB_PORT, DB_NAME)
 	var err error
-	pool, err = pgxpool.Connect(context.Background(), fmt.Sprintf("postgres://%s:%s@localhost:%s/%s", DB_USER, DB_PASSWORD, DB_PORT, DB_NAME))
+	pool, err = pgxpool.Connect(context.Background(), fmt.Sprintf("postgres://%s:%s@%s:%s/%s", DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME))
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %v\n", err)
 	}
-
+	log.Println("Connected to database successfully")
 }
 func ClosePool() {
 	pool.Close()

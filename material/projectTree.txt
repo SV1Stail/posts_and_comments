@@ -1,27 +1,23 @@
 /project-root
 │
 ├── /src
-│   ├── /graphQL            # Папка для схем и резолверов
-│   │   └── schema.graphqls  # GraphQL схема
+│   ├── /graph            # Папка для схем и резолверов
+│   │   ├── schema.graphqls  # GraphQL схема
+│   │   ├── /models
+│   │   │   └── models.go # Определение структур и моделей данных
+│   │   ├── generated.go
+│   │   ├── help_graph.go
+│   │   ├── resolver.go
+│   │   └── schema.resolvers.go
 │   │
-│   ├── /handlers           # HTTP-хендлеры (если используются)
-│   │   └── graphQLHandler.go
+│   ├── /db           # Работа с базой данных
+│   │   └── db.go
 │   │
-│   ├── /services           # Логика приложения, например, бизнес-логика
-│   │   └── service.go
-│   │
-│   ├── /models             # Определение структур и моделей данных
-│   │   └── models.go
-│   │
-│   ├── /repositories       # Работа с базой данных
-│   │   └── repository.go
-│   │
-│   └── main.go             # Точка входа в приложение
-│
-├── /config                 # Конфигурационные файлы проекта
-│   └── config.yaml
-│
-└── go.mod                  # Файл зависимостей Go
+│   ├── main.go             # Точка входа в приложение
+│   ├── gqlgen.yml  # Конфигурационные файлы проекта
+│   ├──server.go #точка входа main
+|   ├── go.mod                  # Файл зависимостей Go
+|   └── go.sum 
 
 go clean -modcache
 go install github.com/99designs/gqlgen@latest
