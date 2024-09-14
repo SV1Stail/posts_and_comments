@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/SV1Stail/test_ozon/graph/model"
-	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
@@ -86,9 +85,12 @@ func commentsForPosts(conn *pgxpool.Conn, ctx context.Context) ([]*model.Comment
 
 }
 
-func commentsGetChildrenForComment(conn *pgxpool.Conn, ctx context.Context, postID string) ([]*model.Comment, error) {
-
-	rows, err := conn.Query(ctx, "SELECT id, text, post_id, parent_id, user_id FROM comments WHERE post_id=$1", postID)
+func commentsGetChildrenForComment(conn *pgxpool.Conn, ctx context.Context, postID string, limit int, offset int) ([]*model.Comment, error) {
+	rows, err := conn.Query(ctx, `SELECT id, text, post_id, parent_id, user_id
+	FROM comments
+	WHERE post_id=$1 
+	ORDER BY parent_id DESC
+	LIMIT $2 OFFSET $3`, postID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch comments: %w", err)
 	}
@@ -121,25 +123,4 @@ func commentsGetChildrenForComment(conn *pgxpool.Conn, ctx context.Context, post
 		}
 	}
 	return comments, nil
-}
-
-// коммент по ID
-func commentsGetCommentByID(pool *pgxpool.Pool, ctx context.Context, commentID string) (*model.Comment, error) {
-	conn, err := pool.Acquire(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Release()
-	row := conn.QueryRow(ctx, "SELECT id, text, post_id, parent_id, user_id FROM comments WHERE id=$1", commentID)
-	comment := &model.Comment{}
-	err = row.Scan(&comment.ID, &comment.Text, &comment.PostID, &comment.ParentID, &comment.Author.ID)
-
-	if err == pgx.ErrNoRows {
-		return nil, fmt.Errorf("comment not found")
-	} else if err != nil {
-		return nil, err
-	}
-
-	return comment, nil
-
 }

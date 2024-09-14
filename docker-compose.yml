@@ -28,7 +28,19 @@ services:
       - app-network
     volumes:
       - db_data:/var/lib/postgresql/data
-
+  test:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+      target: builder  # Используем стадию builder, где установлен Go
+    command: go test ./... -v
+    depends_on:
+      - db
+    networks:
+      - app-network
+    environment:
+      - DATABASE_URL=postgres://user_db:1234@db:5433/ozon?sslmode=disable
+      
 volumes:
   db_data:
 

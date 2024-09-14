@@ -23,9 +23,9 @@ type Comment {
 type Query {
   posts: [Post!]!
   post(id: ID!): Post
-  comments(postId: ID!): [Comment!]! 
+  comments(postId: ID!, limit: Int, offset: Int): [Comment!]!
 }
-#comments(postId: ID!, limit: Int, offset: Int): [Comment!]! 
+
 type Mutation {
   createPost(title: String!, content: String!, allowComments: Boolean!,authorId: ID!): Post
   createComment(postId: ID!, parentId: ID, text: String!, authorId: ID!): Comment
