@@ -32,7 +32,7 @@ services:
     build:
       context: ./src
       dockerfile: Dockerfile
-      target: builder  # Используем стадию builder, где установлен Go
+      target: builder  
     command: go test ./... -v
     depends_on:
       - db

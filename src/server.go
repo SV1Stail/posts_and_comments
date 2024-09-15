@@ -23,7 +23,6 @@ func main() {
 	db.Connect()
 	defer db.ClosePool()
 	srv := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{Resolvers: graph.NewResolver()}))
-
 	srv.AddTransport(transport.Websocket{
 		Upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {

@@ -23,7 +23,9 @@
 ├── /material
 │   ├── db.sql
 │   ├── projectTree.txt
-|   └── Тестовое_задание_Стажировка.pdf
+|   └── Тестовое_задание_Стажировка.
+│
+├── documentation.html  # html страница с документацией к коду
 ├── docker-compose.yml
 └── readme.md
 go clean -modcache

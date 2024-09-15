@@ -17,6 +17,7 @@ type Resolver struct {
 	mu          sync.Mutex
 }
 
+// init Resolver struct
 func NewResolver() *Resolver {
 	return &Resolver{
 		posts:       make([]*model.Post, 0),

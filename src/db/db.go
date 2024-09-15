@@ -16,6 +16,7 @@ const DB_PORT string = "5432"
 const DB_NAME string = "ozon"
 const DB_HOST string = "db"
 
+// make pool connection to db
 func Connect() {
 	var err error
 	pool, err = pgxpool.Connect(context.Background(), fmt.Sprintf("postgres://%s:%s@%s:%s/%s", DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME))
@@ -24,43 +25,13 @@ func Connect() {
 	}
 	log.Println("Connected to database successfully")
 }
+
+// close connection pool
 func ClosePool() {
 	pool.Close()
 }
+
+// get connection pool
 func GetPool() *pgxpool.Pool {
 	return pool
-}
-
-func GetTables() ([]string, error) {
-	// Получаем пул соединений
-	conn := GetPool()
-
-	// Запрос для получения списка таблиц
-	query := `
-		SELECT table_name
-		FROM information_schema.tables
-		WHERE table_schema = 'public'
-	`
-
-	rows, err := conn.Query(context.Background(), query)
-	if err != nil {
-		return nil, fmt.Errorf("unable to execute query: %v", err)
-	}
-	defer rows.Close()
-
-	var tables []string
-	for rows.Next() {
-		var tableName string
-		if err := rows.Scan(&tableName); err != nil {
-			return nil, fmt.Errorf("unable to scan row: %v", err)
-		}
-		tables = append(tables, tableName)
-	}
-
-	// Проверка на ошибки после завершения цикла
-	if rows.Err() != nil {
-		return nil, fmt.Errorf("rows error: %v", rows.Err())
-	}
-
-	return tables, nil
 }

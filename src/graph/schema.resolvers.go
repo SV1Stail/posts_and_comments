@@ -16,6 +16,7 @@ import (
 )
 
 // CreatePost is the resolver for the createPost field.
+// Create new post
 func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, allowComments bool, authorID string) (*model.Post, error) {
 	if title == "" {
 		return nil, fmt.Errorf("title cannot be empty")
@@ -57,6 +58,7 @@ func (r *mutationResolver) CreatePost(ctx context.Context, title string, content
 }
 
 // CreateComment is the resolver for the createComment field.
+// create new comment fro post
 func (r *mutationResolver) CreateComment(ctx context.Context, postID string, parentID *string, text string, authorID string) (*model.Comment, error) {
 	if len(text) > 2000 {
 		return nil, fmt.Errorf("comment text exceeds 2000 characters")
@@ -125,6 +127,7 @@ func (r *mutationResolver) CreateComment(ctx context.Context, postID string, par
 }
 
 // Posts is the resolver for the posts field.
+// get all posts
 func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
 	var (
 		posts       []*model.Post
@@ -214,6 +217,7 @@ func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
 }
 
 // Post is the resolver for the post field.
+// get one post by ID
 func (r *queryResolver) Post(ctx context.Context, id string) (*model.Post, error) {
 	pool := db.GetPool()
 	conn, err := pool.Acquire(ctx)
@@ -254,6 +258,7 @@ func (r *queryResolver) Post(ctx context.Context, id string) (*model.Post, error
 }
 
 // Comments is the resolver for the comments field.
+// get all comments from offset to offset + limit
 func (r *queryResolver) Comments(ctx context.Context, postID string, limit *int, offset *int) ([]*model.Comment, error) {
 	pool := db.GetPool()
 	conn, err := pool.Acquire(ctx)
@@ -279,6 +284,7 @@ func (r *queryResolver) Comments(ctx context.Context, postID string, limit *int,
 }
 
 // CommentAdded is the resolver for the commentAdded field.
+// Inform user about new comment for post on which user subscribe
 func (r *subscriptionResolver) CommentAdded(ctx context.Context, postID string) (<-chan *model.Comment, error) {
 	commentChan := make(chan *model.Comment)
 	go func() {
