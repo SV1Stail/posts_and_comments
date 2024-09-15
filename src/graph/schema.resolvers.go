@@ -7,6 +7,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/SV1Stail/test_ozon/db"
 	"github.com/SV1Stail/test_ozon/graph/model"
@@ -125,43 +126,82 @@ func (r *mutationResolver) CreateComment(ctx context.Context, postID string, par
 
 // Posts is the resolver for the posts field.
 func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
-	pool := db.GetPool()
-	conn, err := pool.Acquire(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Release()
+	var (
+		posts       []*model.Post
+		comments    []*model.Comment
+		postsErr    error
+		commentsErr error
+		wg          sync.WaitGroup
+	)
 
-	rows, err := conn.Query(ctx, "SELECT id, title, content, allow_comments, user_id FROM posts")
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch posts: %w", err)
+	wg.Add(2)
 
-	}
-	defer rows.Close()
-	var posts []*model.Post
-	postMap := make(map[string]*model.Post)
-
-	for rows.Next() {
-		var post model.Post
-		var user model.User
-		err := rows.Scan(&post.ID, &post.Title, &post.Content,
-			&post.AllowComments, &user.ID)
+	go func() {
+		defer wg.Done()
+		pool := db.GetPool()
+		conn, err := pool.Acquire(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan post: %w", err)
+			postsErr = err
+			return
 		}
-		post.Author = &user
+		defer conn.Release()
 
-		post.Comments = []*model.Comment{}
+		rows, err := conn.Query(ctx, "SELECT id, title, content, allow_comments, user_id FROM posts")
+		if err != nil {
+			postsErr = fmt.Errorf("failed to fetch posts: %w", err)
+			return
+		}
+		defer rows.Close()
 
-		posts = append(posts, &post)
-		postMap[post.ID] = &post
+		var postList []*model.Post
+		for rows.Next() {
+			var post model.Post
+			var user model.User
+			err := rows.Scan(&post.ID, &post.Title, &post.Content,
+				&post.AllowComments, &user.ID)
+			if err != nil {
+				postsErr = fmt.Errorf("failed to scan post: %w", err)
+				return
+			}
+			post.Author = &user
+			post.Comments = []*model.Comment{}
+
+			postList = append(postList, &post)
+		}
+		if err := rows.Err(); err != nil {
+			postsErr = fmt.Errorf("rows iteration error: %w", err)
+			return
+		}
+		posts = postList
+	}()
+	go func() {
+		defer wg.Done()
+		pool := db.GetPool()
+		conn, err := pool.Acquire(ctx)
+		if err != nil {
+			commentsErr = err
+			return
+		}
+		defer conn.Release()
+		commentsList, err := commentsForPosts(conn, ctx)
+		if err != nil {
+			commentsErr = err
+			return
+		}
+		comments = commentsList
+	}()
+	wg.Wait()
+
+	if postsErr != nil {
+		return nil, postsErr
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows iteration error: %w", err)
+	if commentsErr != nil {
+		return nil, commentsErr
 	}
-	comments, err := commentsForPosts(conn, ctx)
-	if err != nil {
-		return nil, err
+
+	postMap := make(map[string]*model.Post)
+	for _, post := range posts {
+		postMap[post.ID] = post
 	}
 
 	for _, comment := range comments {
@@ -203,6 +243,7 @@ func (r *queryResolver) Post(ctx context.Context, id string) (*model.Post, error
 	} else if err != nil {
 		return nil, err
 	}
+
 	comments, err := commentsForPost(conn, ctx, post.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get comments: %w", err)
