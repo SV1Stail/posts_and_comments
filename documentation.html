@@ -1,0 +1,51 @@
+<p>package db // import “.”</p>
+<p>CONSTANTS</p>
+<p>const DB_HOST string = “db” const DB_NAME string = “ozon” const DB_PASSWORD string = “1234” const DB_PORT string = “5432” const DB_USER string = “user_db”</p>
+<p>FUNCTIONS</p>
+<p>func ClosePool() close connection pool</p>
+<p>func Connect() make pool connection to db</p>
+<p>func GetPool() *pgxpool.Pool get connection pool</p>
+<p>package graph // import “.”</p>
+<p>FUNCTIONS</p>
+<p>func NewExecutableSchema(cfg Config) graphql.ExecutableSchema NewExecutableSchema creates an ExecutableSchema from the ResolverRoot interface.</p>
+<p>TYPES</p>
+<p>type ComplexityRoot struct { Comment struct { Author func(childComplexity int) int Children func(childComplexity int) int ID func(childComplexity int) int ParentID func(childComplexity int) int PostID func(childComplexity int) int Text func(childComplexity int) int }</p>
+<pre><code>Mutation struct {
+    CreateComment func(childComplexity int, postID string, parentID *string, text string, authorID string) int
+    CreatePost    func(childComplexity int, title string, content string, allowComments bool, authorID string) int
+}
+
+Post struct {
+    AllowComments func(childComplexity int) int
+    Author        func(childComplexity int) int
+    Comments      func(childComplexity int) int
+    Content       func(childComplexity int) int
+    ID            func(childComplexity int) int
+    Title         func(childComplexity int) int
+}
+
+Query struct {
+    Comments func(childComplexity int, postID string, limit *int, offset *int) int
+    Post     func(childComplexity int, id string) int
+    Posts    func(childComplexity int) int
+}
+
+Subscription struct {
+    CommentAdded func(childComplexity int, postID string) int
+}
+
+User struct {
+    ID func(childComplexity int) int
+}</code></pre>
+<p>}</p>
+<p>type Config struct { Schema *ast.Schema Resolvers ResolverRoot Directives DirectiveRoot Complexity ComplexityRoot }</p>
+<p>type DirectiveRoot struct { }</p>
+<p>type MutationResolver interface { CreatePost(ctx context.Context, title string, content string, allowComments bool, authorID string) (<em>model.Post, error) CreateComment(ctx context.Context, postID string, parentID </em>string, text string, authorID string) (*model.Comment, error) }</p>
+<p>type QueryResolver interface { Posts(ctx context.Context) ([]<em>model.Post, error) Post(ctx context.Context, id string) (</em>model.Post, error) Comments(ctx context.Context, postID string, limit <em>int, offset </em>int) ([]*model.Comment, error) }</p>
+<p>type Resolver struct { // Has unexported fields. }</p>
+<p>func NewResolver() *Resolver init Resolver struct</p>
+<p>func (r *Resolver) Mutation() MutationResolver Mutation returns MutationResolver implementation.</p>
+<p>func (r *Resolver) Query() QueryResolver Query returns QueryResolver implementation.</p>
+<p>func (r *Resolver) Subscription() SubscriptionResolver Subscription returns SubscriptionResolver implementation.</p>
+<p>type ResolverRoot interface { Mutation() MutationResolver Query() QueryResolver Subscription() SubscriptionResolver }</p>
+<p>type SubscriptionResolver interface { CommentAdded(ctx context.Context, postID string) (&lt;-chan *model.Comment, error) }</p>
